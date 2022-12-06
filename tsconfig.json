@@ -10,6 +10,8 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": "src",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "paths": {
       "@/*": ["*"],
       "@/tests/*": ["../tests/*"]
