@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm'
 type LoadParam = LoadUserAccountRepository.Params
 type LoadResult = Promise<LoadUserAccountRepository.Result>
 type SaveParam = SaveFacebookAccountRepository.Params
+type SaveResult = Promise<SaveFacebookAccountRepository.Result>
 
 export class PgUserAccountRepository implements LoadUserAccountRepository {
   private readonly pgUserRepo = this.datasource.getRepository(PgUser)
@@ -20,14 +21,17 @@ export class PgUserAccountRepository implements LoadUserAccountRepository {
     }
   }
 
-  async saveWithFacebook (params: SaveParam): Promise<void> {
+  async saveWithFacebook (params: SaveParam): Promise<SaveResult> {
+    let id: string
     if (params.id === undefined) {
-      await this.pgUserRepo.save({
+      const pgUser = await this.pgUserRepo.save({
         name: params.name,
         email: params.email,
         facebookId: params.facebookId
       })
+      id = pgUser.id.toString()
     } else {
+      id = params.id
       await this.pgUserRepo.update({
         id: Number(params.id)
       }, {
@@ -35,5 +39,7 @@ export class PgUserAccountRepository implements LoadUserAccountRepository {
         facebookId: params.facebookId
       })
     }
+
+    return { id }
   }
 }
