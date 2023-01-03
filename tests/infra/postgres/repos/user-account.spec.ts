@@ -1,14 +1,12 @@
-import { LoadUserAccountRepository } from '@/data/contracts/repos'
+import { PgUserAccountRepository } from '@/infra/postgres/repos'
+import { PgUser } from '@/infra/postgres/entities'
 
-import { DataType, IMemoryDb, newDb } from 'pg-mem'
-import { Entity, PrimaryGeneratedColumn, Column, DataSource } from 'typeorm'
+import { DataType, IBackup, IMemoryDb, newDb } from 'pg-mem'
+import { DataSource, Repository } from 'typeorm'
 import { v4 } from 'uuid'
 
-let db: IMemoryDb
-let dataSource: DataSource
-
-const makeDatasource = async (): Promise<void> => {
-  db = newDb({ autoCreateForeignKeyIndices: true })
+const makeFakeDb = async (entities?: any[]): Promise<{ dataSource: DataSource, db: IMemoryDb }> => {
+  const db: IMemoryDb = newDb({ autoCreateForeignKeyIndices: true })
 
   db.public.registerFunction({
     name: 'current_database',
@@ -33,53 +31,42 @@ const makeDatasource = async (): Promise<void> => {
     })
   })
 
-  dataSource = db.adapters.createTypeormDataSource({
+  const dataSource = db.adapters.createTypeormDataSource({
     type: 'postgres',
-    entities: [PgUser]
+    entities: entities ?? ['src/infra/postgres/entities/index.ts']
   })
 
   await dataSource.initialize()
   await dataSource.synchronize()
-}
 
-class PgUserAccountRepository implements LoadUserAccountRepository {
-  async load (params: LoadUserAccountRepository.Params): Promise<LoadUserAccountRepository.Result> {
-    const pgUserRepo = dataSource.getRepository(PgUser)
-    const pgUser = await pgUserRepo.findOne({ where: { email: params.email } })
-    if (pgUser !== null && pgUser !== undefined) {
-      return {
-        id: pgUser.id.toString(),
-        name: pgUser.name ?? undefined
-      }
-    }
-  }
-}
-
-@Entity({ name: 'usuarions' })
-class PgUser {
-  @PrimaryGeneratedColumn()
-    id!: number
-
-  @Column({ name: 'nome', nullable: true })
-    name?: string
-
-  @Column()
-    email!: string
-
-  @Column({ name: 'id_facebook', nullable: true })
-    facebookId?: string
+  return { dataSource, db }
 }
 
 describe('PgUserAccountRepository', () => {
+  let sut: PgUserAccountRepository
+  let pgUserRepo: Repository<PgUser>
+  let backup: IBackup
+  let dataSource: DataSource
+
   beforeAll(async () => {
-    await makeDatasource()
+    const database = await makeFakeDb([PgUser])
+    dataSource = database.dataSource
+    backup = database.db.backup()
+    pgUserRepo = dataSource.getRepository(PgUser)
+  })
+
+  beforeEach(() => {
+    backup.restore()
+    sut = new PgUserAccountRepository(dataSource)
+  })
+
+  afterAll(async () => {
+    await dataSource.destroy()
   })
 
   describe('load', () => {
     it('should return an account if email exists', async () => {
-      const pgUserRepo = dataSource.getRepository(PgUser)
       await pgUserRepo.save({ email: 'existing_email' })
-      const sut = new PgUserAccountRepository()
 
       const account = await sut.load({ email: 'existing_email' })
 
@@ -87,8 +74,6 @@ describe('PgUserAccountRepository', () => {
     })
 
     it('should return undefined if email does not exists', async () => {
-      const sut = new PgUserAccountRepository()
-
       const account = await sut.load({ email: 'new_email' })
 
       expect(account).toBe(undefined)
